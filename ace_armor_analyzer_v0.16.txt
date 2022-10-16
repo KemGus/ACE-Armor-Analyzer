@@ -1,0 +1,371 @@
+@name ACE Armor Analyzer v0.16
+
+@inputs EGP:wirelink
+
+@persist [Version Interval Stay Holo MaxDistance Ready Delay]:number 
+
+@persist [Owner_Name LOS_Unit Ar_Unit ChangeLog]:string
+
+@persist [Owner]:entity
+
+@persist [Red Green Yellow White Gray StartPos Direction]:vector
+
+@persist [V2]:vector2
+
+@trigger none
+
+#[ ToDo:
+    1. Display hit angle
+    2. Setting to make the trace straight
+    3. Improve design slightly by making everything more compact and changing colors
+    4. Add efficiency bar for effectiveArmor ( same formula used for LOS vs KE)
+]#
+
+
+#[ Update
+
+    E2 and Dupe - https://drive.google.com/drive/folders/113bsnEvcGVWslCx3lXV4-b7QdRYi6S6k
+
+]#
+
+
+if(first() | dupefinished()){
+        
+    MaxDistance = 40
+        
+    LOS_Unit = "mm"    
+    Ar_Unit = "mm"
+    
+    Holo = 1
+    Stay = 0 
+                
+    #Ignore if you are not a user
+    Version = 0.16
+    Owner = owner()
+    Owner_Name = Owner:name()
+    Interval = 170
+    
+    EGP:egpClear()
+    
+    #Variables used for changing EGP/print colors
+    Red = vec(255,28,28)
+    Green = vec(0,255,10)
+    Yellow = vec(255,191,0)
+    White = vec(255)
+    Gray = vec(54,57,63)
+    Gr_Transp = 220
+    
+    ChangeLog = "Disposed of warnings and shortened commands"
+
+    
+    setName(
+        "ACE Armor Analyzer " + Version + "\n" 
+        + "Owner: " + Owner_Name + "\n" + "\n"
+    )
+    
+    runOnChat(1)
+    #put chat commands
+    printColor(Yellow, 
+        "Commands:\n/creator - gets creator of the e2 \n/s - trace will stay on your position\n/h - show holos\n/i - change your interval\n/sp - changes max distance
+        \n/changelog - shows latest changelog and version"
+    )
+    
+    #EGP Stuff
+    #ScreenRes = egpScrSize(Owner)
+    #Res = ScreenRes/2 
+    Scr_X = egpScrW(Owner)
+    Scr_Y = egpScrH(Owner)
+    
+    V2 = vec2(Scr_X, Scr_Y) / 512 #Basically converts it to 512 standart without breaking the quality
+    
+    #[Example of using V2:
+        Consider using it for working on hud
+        EGP:egpBox(1, vec2(255, 255)* V2, vec2(100,2) * V2) 
+    ]#
+    
+    #LastID_Holo = 1
+    
+    
+    #holoCreate(1)     #eye trace  
+    
+    
+    #HUD
+    
+    #Consider using it to keep the code clear
+    Red_St_HUD = 1
+    Red_Last_HUD = 1
+    
+    Green_St_HUD = inf()
+    Green_Last_HUD = inf()
+    
+    Yellow_St_HUD = 13 
+    Yellow_Last_HUD = 13
+    
+    White_St_HUD = 4
+    White_Last_HUD = 12 
+    
+    Gray_St_HUD = 3
+    Gray_Last_HUD = 3 
+    
+    #Create EGP
+    
+    #Gray
+    EGP:egpBox(3, vec2(68, 180)* V2, vec2(80,160) * V2) 
+    
+    #Red
+    EGP:egpText(1, "ACE Armor Analyzer " + Version, vec2(63, 90) * V2)
+    
+    #Green
+    
+    #Yellow
+    EGP:egpText(13, "Armor:", vec2(32, 110) * V2)
+    
+    #White
+    EGP:egpText(4, "", vec2(32, 125) * V2)
+    EGP:egpText(5, "", vec2(32, 140) * V2)
+    EGP:egpText(6, "", vec2(32, 155) * V2)
+    EGP:egpText(7, "", vec2(32, 170) * V2)
+    EGP:egpText(8, "", vec2(32, 185) * V2)
+    EGP:egpText(9, "", vec2(32, 200) * V2)
+    EGP:egpText(10, "", vec2(32, 215) * V2)
+    EGP:egpText(11, "", vec2(32, 230) * V2)
+    EGP:egpText(12, "", vec2(32, 245) * V2)
+
+    
+    
+    
+    
+    
+    #Setting egp settings here:    
+    for(I = Red_St_HUD, Red_Last_HUD){
+        EGP:egpAlign(I, 1, 1)
+        EGP:egpSize(I, 25)
+        EGP:egpColor(I, Red)
+    }
+    
+    for(I = Green_St_HUD, Green_Last_HUD){
+        EGP:egpAlign(I, 1, 1)
+        EGP:egpSize(I, 25)
+        EGP:egpColor(I, Green)
+    }
+    
+    for(I = Yellow_St_HUD, Yellow_Last_HUD){
+        EGP:egpAlign(I, 0, 1)
+        EGP:egpSize(I, 25)
+        EGP:egpColor(I, Yellow)
+    }
+    
+    for(I = White_St_HUD, White_Last_HUD){
+        EGP:egpAlign(I, 0, 1)
+        EGP:egpSize(I, 17)
+        EGP:egpColor(I, White)
+    }
+    
+    for(I = Gray_St_HUD, Gray_Last_HUD){
+        EGP:egpAlign(I, 1, 1)
+        EGP:egpSize(I, 25)
+        EGP:egpColor(I, vec4(Gray,Gr_Transp))
+    }
+    
+    
+    function table recursiveTrace(Start:vector, Direction:vector, Depth, Data:table, Filter:array) {
+        if(Depth > 50) {
+            return Data
+        }
+        
+        rangerFilter(Filter)
+        local Trace = rangerOffsetHull(Start, Start + Direction, vec())
+        local HitEntity = Trace:entity()
+        local HitPos = Trace:position()
+        Direction = Direction:normalized()
+        
+        if(!HitEntity:isValid() | Trace:hitWorld()) {
+            return Data
+        }
+        
+        if(HitEntity:acfHitClip(HitPos)) {
+            Filter:pushEntity(HitEntity)
+            
+            return recursiveTrace(HitPos, Direction * MaxDistance, Depth + 1, Data, Filter)
+        }
+        
+        if(HitEntity:type() != "prop_physics") {
+            Filter:pushEntity(HitEntity)
+            
+            return recursiveTrace(HitPos, Direction * MaxDistance, Depth + 1, Data, Filter)
+        }
+        
+        local HitNormal = Trace:hitNormal()
+        local PropArmorData = HitEntity:acfPropArmorData()
+        local Curve = PropArmorData["Curve", number]
+        local Thickness = HitEntity:acfPropArmorMax()
+        #local Mat = PropArmorData["Material", string]
+        local HitAngle = acos(Direction:dot(-HitNormal)) #For some reason ERA ignores hit angle
+        local EffThickness = Thickness / cos(HitAngle)
+        local KE_Eff = PropArmorData["Effectiveness", number]
+        local CE_Eff = PropArmorData["HEATeffectiveness", number]
+
+        Data:pushTable(table(
+            "HitNormal" = HitNormal,
+            "HitPos" = HitPos,
+            "ThicknessKE" = (Thickness^Curve) * KE_Eff,
+            "ThicknessCE" = (Thickness^Curve) * CE_Eff,
+            "EffThickness" = EffThickness,
+            "EffThicknessKE" = (EffThickness^Curve) * KE_Eff,
+            "EffThicknessCE" = (EffThickness^Curve) * CE_Eff,
+            "Ductility" = HitEntity:acfPropDuctility()
+        ))
+
+        Filter:pushEntity(HitEntity)
+
+        return recursiveTrace(HitPos, Direction * MaxDistance, Depth + 1, Data, Filter)
+    }
+    
+    for(I = 1, 10) {
+        holoCreate(I)
+        holoAlpha(I, 0)
+        holoModel(I, "plane")
+        holoScale(I, vec(0.25))
+    }
+    
+    Ready = 1
+    
+    #Ignore this:
+    StartPos = vec()
+    Delay = 0
+}
+
+
+interval(Interval)
+
+
+#holoPos(1, Tr_Pos)
+
+#Chat commands
+if(chatClk(Owner) &!(first() | dupefinished())) {
+    
+    Chat = lastSaid():explode(" ")
+
+    if(Chat[1, string] == "/creator") {
+        printColor(Green, "Creators are:\n" +
+            "KemGus\nhttps://steamcommunity.com/id/YaLovemanDangerMan/\n" +
+            "Cheezus\nhttps://steamcommunity.com/id/14865867816625/"
+        )
+
+        hideChat(1)
+    }
+    elseif(Chat[1, string] == "/s") {
+        Stay = !Stay
+        printColor(Green, "Stay is ", Stay)
+
+        if(Stay & Holo & owner():aimEntity()) {
+            local Aim = (owner():aimPos() - owner():shootPos()):normalized()
+            local Trace = recursiveTrace(StartPos, Aim * 1000, 0, table(), array(owner()))
+            local EndPos = Trace[Trace:count(), table]["HitPos", vector] + Aim * 16
+            local Middle = (owner():shootPos() + EndPos) / 2
+            holoCreate(100, Middle, vec(1), Aim:toAngle() + ang(90, 0, 0), vec(0, 255, 0))
+            holoScaleUnits(100, vec(0.5, 0.5, (owner():shootPos() - EndPos):length()))
+        } else {
+            holoDelete(100)
+        }
+
+        hideChat(1)
+    }
+    elseif(Chat[1, string] == "/h") {
+        Holo = !Holo
+        printColor(Green, "Show Holo is ", Holo)
+
+        hideChat(1)
+    }
+    elseif(Chat[1, string] == "/i") {
+        if(Chat[2, string]:toNumber() != 0 ){
+            Interval = Chat[2, string]:toNumber()
+        }
+        Interval = clamp(Interval, 150, inf())
+        printColor(Green, "Interval is ", Interval)
+
+        hideChat(1)
+    }
+    elseif(Chat[1, string] == "/changelog") {
+        printColor(White, ChangeLog + "  Vers: " + Version)
+
+        hideChat(1)
+    }
+    elseif(Chat[1, string] == "/sp") {
+        if(Chat[2, string]:toNumber() != 0 ){
+            MaxDistance = Chat[2, string]:toNumber()
+        }
+        MaxDistance = clamp(MaxDistance, 0, inf())
+        printColor(Green, "Space is ", MaxDistance)
+
+        hideChat(1)
+    }
+}
+
+
+if(Ready & clk()) {
+    if(!Stay) {
+        StartPos = owner():shootPos()
+        Direction = (owner():aimPos() - owner():shootPos()):normalized() * 384
+    }
+    
+    local Hit = rangerOffset(StartPos, StartPos + Direction):entity()
+    
+    local Layers = 0
+    local ThicknessKE = 0
+    local ThicknessCE = 0
+    local EffThickness = 0
+    local EffThicknessKE = 0
+    local EffThicknessCE = 0
+    local AvgDuctility = 0
+    local LOS_VS_KE = 0
+    local LOS_VS_CE = 0
+    
+    Delay++
+    
+    if(Hit & ((changed(StartPos) | changed(Direction)) | (Delay % 5 == 0))) {
+        local Data = recursiveTrace(StartPos, Direction, 0, table(), array(owner()))
+
+        Layers = Data:count()
+
+        for(I = 1, 10) {
+            holoAlpha(I, 0)
+        }
+
+        for(I = 1, Data:count()) {
+            local Prop = Data[I, table]
+            ThicknessKE += Prop["ThicknessKE", number]
+            ThicknessCE += Prop["ThicknessCE", number]
+            EffThickness += Prop["EffThickness", number]
+            EffThicknessKE += Prop["EffThicknessKE", number]
+            EffThicknessCE += Prop["EffThicknessCE", number]
+            AvgDuctility += Prop["Ductility", number]
+            
+            if(Holo) {
+                local HitNormal = Prop["HitNormal", vector]
+                local HitPos = Prop["HitPos", vector]
+                holoAlpha(I, 255)
+                holoPos(I, HitPos + HitNormal * 0.1)
+                holoAng(I, HitNormal:toAngle() + ang(90, 0, 0))
+            }
+        }
+            
+        if(Layers > 0 & EffThickness > 0) {
+            AvgDuctility /= Layers
+            
+            LOS_VS_KE = (EffThicknessKE / EffThickness) * 100 - 100
+            LOS_VS_CE = (EffThicknessCE / EffThickness) * 100 - 100
+        }
+    
+        #HUD
+        EGP:egpSetText(4, "LOS: " + round(EffThickness, 1) + LOS_Unit)
+        EGP:egpSetText(5, "Total KE : " + round(ThicknessKE, 1) + Ar_Unit)
+        EGP:egpSetText(6, "Total CHE : " + round(ThicknessCE, 1) + Ar_Unit)
+        EGP:egpSetText(7, "Effective KE : " + round(EffThicknessKE, 1) + Ar_Unit)
+        EGP:egpSetText(8, "Effective CHE : " + round(EffThicknessCE, 1) + Ar_Unit)
+        EGP:egpSetText(9, "Average Ductility : " + round(AvgDuctility) + "%")
+        EGP:egpSetText(10, "Layers : " +  Layers)
+        EGP:egpSetText(11, "LOS vs Eff_KE: " + round(LOS_VS_KE) + "%")
+        EGP:egpSetText(12, "LOS vs Eff_CHE: " + round(LOS_VS_CE) + "%")
+    }
+}
